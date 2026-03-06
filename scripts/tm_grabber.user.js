@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         淘宝/天猫商品详情数据抓取工具
 // @namespace    https://github.com/Triclouds/TemperMonkey-Scripts
-// @version      1.3.2
+// @version      1.3.3
 // @description  一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置
 // @author       Assistant
 // @match        *://detail.tmall.com/item.htm*
