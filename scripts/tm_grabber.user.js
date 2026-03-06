@@ -313,7 +313,7 @@
         // 按照新规范封装数据格式
         const payload = {
             "Context": {
-                "argv": [data]
+                "argv": data
             }
         };
 
@@ -383,7 +383,7 @@
      * 调用的函数: 无
      * 参数: @param {string} username - 当前执行抓取的用户标识
      * 返回值: @returns {object|null} 组装好的商品信息对象，上下文丢失时返回 null
-     * 修改时间: 2026-03-06 13:57
+     * 修改时间: 2026-03-06 17:21
      */
     function extractProductData(username) {
         // 通过 unsafeWindow 穿透油猴沙盒获取淘宝/天猫页面变量
@@ -391,6 +391,12 @@
         if (!ctx) return null;
 
         const res = ctx.loaderData?.home?.data?.res || {};
+        
+        // 提取颜色分类（优化：支持模糊匹配常见颜色属性名，解决分类匹配不到的问题）
+        const skuProps = res.skuBase?.props || [];
+        const colorProp = skuProps.find(p => p.name === "颜色分类") || 
+                          skuProps.find(p => p.name.includes("颜色"));
+
         const data = {
             username: username,
             grabTime: new Date().toLocaleString(),
@@ -400,7 +406,7 @@
             itemLink: res.item?.qrCode || window.location.href,
             title: res.item?.title,
             salesCount: res.item?.vagueSellCount,
-            colors: (res.skuBase?.props || []).find(p => p.name === "颜色分类")?.values.map(v => v.name) || [],
+            colors: colorProp ? colorProp.values.map(v => v.name) : [],
             parameters: []
         };
 
