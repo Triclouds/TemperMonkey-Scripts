@@ -11,7 +11,7 @@
 
 | 脚本名称 | 描述 | 安装链接 (Raw) | 目标网站 | 版本 |
 | :--- | :--- | :--- | :--- | :--- |
-| 淘宝/天猫商品详情数据抓取工具 | 一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置 | [点击安装](./scripts/tm_grabber.user.js) | 淘宝/天猫详情页 | 1.3 |
+| 淘宝/天猫商品详情数据抓取工具 | 一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置 | [点击安装](https://raw.githubusercontent.com/Triclouds/TemperMonkey-Scripts/master/scripts/tm_grabber.user.js) | 淘宝/天猫详情页 | 1.3.1 |
 
 ## 🛠️ 安装说明
 1. 确保浏览器已安装 [Tampermonkey](https://www.tampermonkey.net/) 插件。

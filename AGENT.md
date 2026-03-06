@@ -22,14 +22,14 @@ AI 在执行文件操作前必须确认并维护以下结构：
 ```javascript
 // ==UserScript==
 // @name         [脚本名称]
-// @namespace    https://github.com/你的用户名/你的仓库名
+// @namespace    https://github.com/Triclouds/TemperMonkey-Scripts
 // @version      1.0.0
 // @description  [功能简述]
 // @author       [作者]
 // @match        [精确匹配的 URL]
 // @grant        none
-// @downloadURL  https://raw.githubusercontent.com/你的用户名/你的仓库名/main/scripts/[文件名].user.js
-// @updateURL    https://raw.githubusercontent.com/你的用户名/你的仓库名/main/scripts/[文件名].user.js
+// @downloadURL  https://raw.githubusercontent.com/Triclouds/TemperMonkey-Scripts/master/scripts/[文件名].user.js
+// @updateURL    https://raw.githubusercontent.com/Triclouds/TemperMonkey-Scripts/master/scripts/[文件名].user.js
 // ==/UserScript==
 ```
 **自动处理逻辑**:

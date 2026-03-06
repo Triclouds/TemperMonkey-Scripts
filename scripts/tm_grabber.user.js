@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         淘宝/天猫商品详情数据抓取工具 (可拖拽版)
-// @namespace    http://tampermonkey.net/
-// @version      1.3
+// @name         淘宝/天猫商品详情数据抓取工具
+// @namespace    https://github.com/Triclouds/TemperMonkey-Scripts
+// @version      1.3.1
 // @description  一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置
 // @author       Assistant
 // @match        *://detail.tmall.com/item.htm*
@@ -14,6 +14,8 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @connect      *
+// @downloadURL  https://raw.githubusercontent.com/Triclouds/TemperMonkey-Scripts/master/scripts/tm_grabber.user.js
+// @updateURL    https://raw.githubusercontent.com/Triclouds/TemperMonkey-Scripts/master/scripts/tm_grabber.user.js
 // ==/UserScript==
 
 (function() {
@@ -94,7 +96,7 @@
      * 4. mouseup 阶段移除监听并保存最新位置到 GM 存储。
      * 调用的函数: 无
      * 参数: @param {HTMLElement} el - 需要实现拖拽的 DOM 元素
-     * 修改时间: 2026-03-06 11:52
+     * 修改时间: 2026-03-06 13:21
      */
     function makeDraggable(el) {
         // 读取存储的位置信息，默认 右 20px, 上 150px
@@ -152,7 +154,7 @@
      *   @param {string} url - 目标 Webhook URL
      *   @param {object} data - 提取出的商品信息对象
      * 返回值: @returns {Promise<string>} 服务器响应或错误信息
-     * 修改时间: 2026-03-06 11:52
+     * 修改时间: 2026-03-06 13:21
      */
     function sendToWebhook(url, data) {
         return new Promise((resolve, reject) => {
@@ -183,7 +185,7 @@
      * 调用的函数: 无
      * 参数: @param {string} username - 当前执行抓取的用户标识
      * 返回值: @returns {object|null} 组装好的商品信息对象，上下文丢失时返回 null
-     * 修改时间: 2026-03-06 11:52
+     * 修改时间: 2026-03-06 13:21
      */
     function extractProductData(username) {
         // 通过 unsafeWindow 穿透油猴沙盒获取淘宝/天猫页面变量
@@ -237,7 +239,7 @@
      * 调用的函数: 
      * - scripts/tm_grabber.user.js 的 extractProductData (提取详情数据)
      * - scripts/tm_grabber.user.js 的 sendToWebhook (数据上传接口)
-     * 修改时间: 2026-03-06 11:52
+     * 修改时间: 2026-03-06 13:21
      */
     async function handleGrab() {
         if (isDragging) return; // 如果刚才是在拖动按钮，则不触发抓取
@@ -274,17 +276,40 @@
         }
     }
 
+    /**
+     * 函数名称：主启动入口
+     * 
+     * 概述: 脚本主执行入口，负责初始化 UI 和交互逻辑
+     * 详细描述: 
+     * 1. 创建悬浮按钮并设置初始文本；
+     * 2. 挂载点击事件监听器；
+     * 3. 将按钮注入页面 body；
+     * 4. 初始化拖拽功能。
+     * 调用的函数: 
+     * - scripts/tm_grabber.user.js 的 handleGrab (抓取业务主控)
+     * - scripts/tm_grabber.user.js 的 makeDraggable (拖拽功能初始化)
+     * 修改时间: 2026-03-06 13:21
+     */
+    function main() {
+        const btn = document.createElement('div');
+        btn.id = 'tm-data-grabber';
+        btn.innerHTML = '🔍 提取商品JSON';
+        
+        // 绑定点击事件，处理逻辑在 handleGrab 中
+        btn.addEventListener('click', handleGrab);
+        
+        document.body.appendChild(btn);
+        makeDraggable(btn); // [新增] 使按钮可拖拽并持久化位置
+    }
+
     //------------------
     // 初始化入口
     //------------------
-    const btn = document.createElement('div');
-    btn.id = 'tm-data-grabber';
-    btn.innerHTML = '🔍 提取商品JSON';
-    
-    // 绑定点击事件，处理逻辑在 handleGrab 中
-    btn.addEventListener('click', handleGrab);
-    
-    document.body.appendChild(btn);
-    makeDraggable(btn); // [新增] 使按钮可拖拽并持久化位置
+    // 遵循 AGENT.md 规范，包含对 document.readyState 的判断
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        main();
+    } else {
+        window.addEventListener('DOMContentLoaded', main);
+    }
 
 })();
