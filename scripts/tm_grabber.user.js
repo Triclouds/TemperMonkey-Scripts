@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         淘宝/天猫商品详情数据抓取工具
 // @namespace    https://github.com/Triclouds/TemperMonkey-Scripts
-// @version      1.3.1
+// @version      1.3.2
 // @description  一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置
 // @author       Assistant
 // @match        *://detail.tmall.com/item.htm*
@@ -40,7 +40,8 @@
     // 配置项定义，便于后续扩展
     const SETTINGS_CONFIG = [
         { id: 'tm_username', label: '用户名', type: 'text', placeholder: '请输入您的用户名' },
-        { id: 'tm_webhook', label: 'Webhook 地址', type: 'url', placeholder: '请输入 Webhook 存储地址' }
+        { id: 'tm_webhook', label: 'Webhook 地址', type: 'url', placeholder: '请输入 Webhook 存储地址' },
+        { id: 'tm_token', label: 'AirScript Token', type: 'password', placeholder: '请输入鉴权 Token' }
     ];
 
     /**
@@ -293,26 +294,49 @@
     /**
      * 函数名称：发送数据至 Webhook
      * 
-     * 概述: 将提取出的 JSON 数据通过 POST 方式发送到 Webhook 地址
+     * 概述: 将提取出的 JSON 数据通过 POST 方式发送到 Webhook 地址，按新格式封装并处理结果
      * 详细描述: 
      * 1. 构造 GM_xmlhttpRequest 请求；
-     * 2. 设置 JSON 请求头；
-     * 3. 处理请求成功与失败的回调并封装为 Promise。
+     * 2. 按新规范将原 JSON 封装在 `Context.argv` 数组中；
+     * 3. 设置 JSON 请求头并添加 `AirScript-Token` 鉴权头；
+     * 4. 解析响应 JSON 并返回，处理潜在的解析错误与网络异常。
      * 调用的函数: 无
      * 参数: 
      *   @param {string} url - 目标 Webhook URL
-     *   @param {object} data - 提取出的商品信息对象
-     * 返回值: @returns {Promise<string>} 服务器响应或错误信息
-     * 修改时间: 2026-03-06 13:57
+     *   @param {object} data - 提取出的商品原始信息对象
+     *   @param {string} token - 鉴权 Token
+     * 返回值: @returns {Promise<object>} 服务器响应的 JSON 对象或错误信息
+     * 修改时间: 2026-03-06 16:11
      */
-    function sendToWebhook(url, data) {
+    function sendToWebhook(url, data, token) {
+        // 按照新规范封装数据格式
+        const payload = {
+            "Context": {
+                "argv": [data]
+            }
+        };
+
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: "POST",
                 url: url,
-                headers: { "Content-Type": "application/json" },
-                data: JSON.stringify(data),
-                onload: (res) => (res.status >= 200 && res.status < 300) ? resolve(res.responseText) : reject(`HTTP错误 ${res.status}`),
+                headers: { 
+                    "Content-Type": "application/json",
+                    "AirScript-Token": token
+                },
+                data: JSON.stringify(payload),
+                onload: (res) => {
+                    if (res.status >= 200 && res.status < 300) {
+                        try {
+                            const response = JSON.parse(res.responseText);
+                            resolve(response);
+                        } catch (e) {
+                            reject(`响应解析失败: ${e.message}`);
+                        }
+                    } else {
+                        reject(`HTTP错误 ${res.status}`);
+                    }
+                },
                 onerror: () => reject("网络错误")
             });
         });
@@ -381,14 +405,14 @@
      * 概述: 点击按钮后的主控函数，执行验证、提取、复制、上传全流程
      * 详细描述: 
      * 1. 判断是否刚结束拖拽以防止误触；
-     * 2. 校验用户名与 Webhook 配置是否存在；
-     * 3. 调用 extractProductData 提取数据；
-     * 4. 数据成功获取后调用 GM_setClipboard 写入剪贴板；
-     * 5. 调用 sendToWebhook 异步上传数据并显示提示框。
+     * 2. 校验用户名、Webhook 地址及 AirScript Token 是否存在；
+     * 3. 调用 extractProductData 提取数据并写入剪贴板；
+     * 4. 调用新版 sendToWebhook 封装数据并带 Token 异步上传；
+     * 5. 解析服务器响应，根据 success、skip、error 等状态字段弹出分级中文提示。
      * 调用的函数: 
      * - scripts/tm_grabber.user.js 的 extractProductData (提取详情数据)
-     * - scripts/tm_grabber.user.js 的 sendToWebhook (数据上传接口)
-     * 修改时间: 2026-03-06 13:57
+     * - scripts/tm_grabber.user.js 的 sendToWebhook (新版数据上传接口)
+     * 修改时间: 2026-03-06 16:11
      */
     async function handleGrab() {
         if (isDragging) return; // 如果刚才是在拖动按钮，则不触发抓取
@@ -396,9 +420,10 @@
         // 获取配置信息
         const username = GM_getValue("tm_username", "");
         const webhook = GM_getValue("tm_webhook", "");
+        const token = GM_getValue("tm_token", "");
         
-        if (!username || !webhook) {
-            alert("⚠️ 请先在油猴菜单中设置用户名和 Webhook 地址！");
+        if (!username || !webhook || !token) {
+            alert("⚠️ 请先在油猴菜单中完整设置用户名、Webhook 地址和 Token！");
             return;
         }
 
@@ -409,14 +434,34 @@
         try {
             const data = extractProductData(username);
             if (data) {
-                // 成功提取数据
+                // 成功提取数据，先复制到剪贴板
                 GM_setClipboard(JSON.stringify(data, null, 4));
-                await sendToWebhook(webhook, data);
-                alert("✅ 成功！数据已发送并复制到剪贴板。");
+                
+                // 发送数据到新的 Webhook 接口
+                const response = await sendToWebhook(webhook, data, token);
+                
+                // 根据新的响应格式进行逻辑判断
+                const result = response.data?.result || {};
+                
+                if (result.success === true) {
+                    if (result.skip === true) {
+                        alert("⚠️ 商品已存在，跳过保存。数据已复制到剪贴板。");
+                    } else {
+                        alert("✅ 提取成功！数据已新增并复制到剪贴板。");
+                    }
+                } else if (result.success === false) {
+                    // 处理后端明确返回的失败（例如字段缺失等错误）
+                    const errorMsg = result.error || response.error || "未知服务器逻辑错误";
+                    alert(`❌ 插入失败: ${errorMsg}`);
+                } else {
+                    // 处理非预期响应格式，但状态码正常的情况
+                    alert("✅ 数据已发送，但未收到明确的处理结果状态。");
+                }
             } else {
                 alert("❌ 提取失败：未找到商品渲染上下文 (ICE_APP_CONTEXT)。");
             }
         } catch (e) {
+            // 处理网络请求报错、解析异常等
             alert(`❌ 执行异常: ${e}`);
         } finally {
             // 恢复按钮状态
