@@ -37,20 +37,87 @@
     // 配置逻辑
     //------------------
 
+    // 配置项定义，便于后续扩展
+    const SETTINGS_CONFIG = [
+        { id: 'tm_username', label: '用户名', type: 'text', placeholder: '请输入您的用户名' },
+        { id: 'tm_webhook', label: 'Webhook 地址', type: 'url', placeholder: '请输入 Webhook 存储地址' }
+    ];
+
+    /**
+     * 函数名称：显示设置界面
+     * 
+     * 概述: 创建并显示一个现代化的配置弹窗
+     * 详细描述: 
+     * 1. 生成半透明遮罩层和居中的配置容器；
+     * 2. 根据 SETTINGS_CONFIG 动态生成输入表单；
+     * 3. 实现保存逻辑，将数据持久化至 GM 存储并刷新页面；
+     * 4. 实现取消逻辑，销毁 DOM 元素。
+     * 调用的函数: 无
+     * 参数: 无
+     * 修改时间: 2026-03-06 13:57
+     */
+    function showSettingsModal() {
+        // 移除已存在的弹窗
+        const existing = document.getElementById('tm-settings-overlay');
+        if (existing) existing.remove();
+
+        // 创建遮罩层
+        const overlay = document.createElement('div');
+        overlay.id = 'tm-settings-overlay';
+        
+        // 创建内容容器
+        const container = document.createElement('div');
+        container.id = 'tm-settings-container';
+        
+        let html = `
+            <div class="tm-settings-header">⚙️ 提取参数设置</div>
+            <div class="tm-settings-body">
+        `;
+
+        SETTINGS_CONFIG.forEach(item => {
+            const val = GM_getValue(item.id, "");
+            html += `
+                <div class="tm-settings-item">
+                    <label>${item.label}</label>
+                    <input type="${item.type}" id="input-${item.id}" value="${val}" placeholder="${item.placeholder}">
+                </div>
+            `;
+        });
+
+        html += `
+            </div>
+            <div class="tm-settings-footer">
+                <button id="tm-settings-save" class="tm-btn-primary">保存配置</button>
+                <button id="tm-settings-cancel" class="tm-btn-secondary">取消</button>
+            </div>
+        `;
+
+        container.innerHTML = html;
+        overlay.appendChild(container);
+        document.body.appendChild(overlay);
+
+        // 绑定事件
+        document.getElementById('tm-settings-save').onclick = () => {
+            SETTINGS_CONFIG.forEach(item => {
+                const input = document.getElementById(`input-${item.id}`);
+                GM_setValue(item.id, input.value.trim());
+            });
+            alert("✅ 配置已更新！");
+            location.reload();
+        };
+
+        document.getElementById('tm-settings-cancel').onclick = () => {
+            overlay.remove();
+        };
+
+        // 点击遮罩关闭
+        overlay.onclick = (e) => {
+            if (e.target === overlay) overlay.remove();
+        };
+    }
+
     // 注册油猴菜单配置项
-    GM_registerMenuCommand("⚙️ 设置提取参数 (用户名/Webhook)", function() {
-        const oldName = GM_getValue("tm_username", "");
-        const oldHook = GM_getValue("tm_webhook", "");
-        
-        const newName = prompt("请输入您的用户名:", oldName);
-        if (newName !== null) GM_setValue("tm_username", newName);
-        
-        const newHook = prompt("请输入 Webhook 存储地址:", oldHook);
-        if (newHook !== null) GM_setValue("tm_webhook", newHook);
-        
-        alert("✅ 配置已更新！");
-        location.reload(); // 刷新页面以应用配置
-    });
+    GM_registerMenuCommand("⚙️ 设置提取参数", showSettingsModal);
 
     //------------------
     // UI 样式分区
@@ -79,6 +146,88 @@
             background: #999;
             cursor: not-allowed;
         }
+
+        /* 设置弹窗样式 */
+        #tm-settings-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        #tm-settings-container {
+            background: white;
+            width: 400px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+            animation: tmFadeIn 0.3s ease;
+        }
+        @keyframes tmFadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tm-settings-header {
+            background: #f8f8f8;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border-bottom: 1px solid #eee;
+            color: #333;
+        }
+        .tm-settings-body {
+            padding: 20px;
+        }
+        .tm-settings-item {
+            margin-bottom: 15px;
+        }
+        .tm-settings-item label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #666;
+        }
+        .tm-settings-item input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .tm-settings-item input:focus {
+            border-color: #ff5000;
+        }
+        .tm-settings-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+            background: #f8f8f8;
+        }
+        .tm-btn-primary {
+            background: #ff5000;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .tm-btn-secondary {
+            background: #eee;
+            color: #666;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .tm-btn-primary:hover { background: #e64500; }
+        .tm-btn-secondary:hover { background: #ddd; }
     `);
 
     //------------------
@@ -96,7 +245,7 @@
      * 4. mouseup 阶段移除监听并保存最新位置到 GM 存储。
      * 调用的函数: 无
      * 参数: @param {HTMLElement} el - 需要实现拖拽的 DOM 元素
-     * 修改时间: 2026-03-06 13:21
+     * 修改时间: 2026-03-06 13:57
      */
     function makeDraggable(el) {
         // 读取存储的位置信息，默认 右 20px, 上 150px
@@ -154,7 +303,7 @@
      *   @param {string} url - 目标 Webhook URL
      *   @param {object} data - 提取出的商品信息对象
      * 返回值: @returns {Promise<string>} 服务器响应或错误信息
-     * 修改时间: 2026-03-06 13:21
+     * 修改时间: 2026-03-06 13:57
      */
     function sendToWebhook(url, data) {
         return new Promise((resolve, reject) => {
@@ -185,7 +334,7 @@
      * 调用的函数: 无
      * 参数: @param {string} username - 当前执行抓取的用户标识
      * 返回值: @returns {object|null} 组装好的商品信息对象，上下文丢失时返回 null
-     * 修改时间: 2026-03-06 13:21
+     * 修改时间: 2026-03-06 13:57
      */
     function extractProductData(username) {
         // 通过 unsafeWindow 穿透油猴沙盒获取淘宝/天猫页面变量
@@ -239,7 +388,7 @@
      * 调用的函数: 
      * - scripts/tm_grabber.user.js 的 extractProductData (提取详情数据)
      * - scripts/tm_grabber.user.js 的 sendToWebhook (数据上传接口)
-     * 修改时间: 2026-03-06 13:21
+     * 修改时间: 2026-03-06 13:57
      */
     async function handleGrab() {
         if (isDragging) return; // 如果刚才是在拖动按钮，则不触发抓取
@@ -288,7 +437,7 @@
      * 调用的函数: 
      * - scripts/tm_grabber.user.js 的 handleGrab (抓取业务主控)
      * - scripts/tm_grabber.user.js 的 makeDraggable (拖拽功能初始化)
-     * 修改时间: 2026-03-06 13:21
+     * 修改时间: 2026-03-06 13:57
      */
     function main() {
         const btn = document.createElement('div');
