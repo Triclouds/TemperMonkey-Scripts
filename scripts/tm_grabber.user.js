@@ -299,14 +299,15 @@
      * 1. 构造 GM_xmlhttpRequest 请求；
      * 2. 按新规范将原 JSON 封装在 `Context.argv` 数组中；
      * 3. 设置 JSON 请求头并添加 `AirScript-Token` 鉴权头；
-     * 4. 解析响应 JSON 并返回，处理潜在的解析错误与网络异常。
+     * 4. [优化] 尝试伪装 Referer 和 Origin 以绕过部分服务器对浏览器插件的 403 拦截；
+     * 5. 解析响应 JSON 并返回，处理潜在的解析错误与网络异常。
      * 调用的函数: 无
      * 参数: 
      *   @param {string} url - 目标 Webhook URL
      *   @param {object} data - 提取出的商品原始信息对象
      *   @param {string} token - 鉴权 Token
      * 返回值: @returns {Promise<object>} 服务器响应的 JSON 对象或错误信息
-     * 修改时间: 2026-03-06 16:11
+     * 修改时间: 2026-03-06 16:15
      */
     function sendToWebhook(url, data, token) {
         // 按照新规范封装数据格式
@@ -317,13 +318,24 @@
         };
 
         return new Promise((resolve, reject) => {
+            let webhookOrigin = "";
+            try {
+                webhookOrigin = new URL(url).origin;
+            } catch (e) {
+                webhookOrigin = "";
+            }
+
             GM_xmlhttpRequest({
                 method: "POST",
                 url: url,
                 headers: { 
                     "Content-Type": "application/json",
-                    "AirScript-Token": token
+                    "AirScript-Token": token,
+                    // 尝试绕过 403：部分后端（如 WPS）会验证请求来源是否为自建域名
+                    "Referer": webhookOrigin + "/",
+                    "Origin": webhookOrigin
                 },
+                anonymous: true, // 不发送 Cookie，减少环境干扰
                 data: JSON.stringify(payload),
                 onload: (res) => {
                     if (res.status >= 200 && res.status < 300) {
@@ -334,10 +346,23 @@
                             reject(`响应解析失败: ${e.message}`);
                         }
                     } else {
-                        reject(`HTTP错误 ${res.status}`);
+                        // 针对 403 错误提供更详细的后端返回信息
+                        let errorMsg = `HTTP错误 ${res.status}`;
+                        try {
+                            const errorData = JSON.parse(res.responseText);
+                            if (errorData.message || errorData.error) {
+                                errorMsg += ` (${errorData.message || errorData.error})`;
+                            }
+                        } catch (e) {
+                            // 如果不是 JSON，尝试读取前 100 个字符
+                            if (res.responseText) {
+                                errorMsg += `: ${res.responseText.substring(0, 100)}`;
+                            }
+                        }
+                        reject(errorMsg);
                     }
                 },
-                onerror: () => reject("网络错误")
+                onerror: (err) => reject(`网络错误: ${JSON.stringify(err)}`)
             });
         });
     }
