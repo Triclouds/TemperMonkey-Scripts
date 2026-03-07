@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         淘宝/天猫商品详情数据抓取工具
 // @namespace    https://github.com/Triclouds/TemperMonkey-Scripts
-// @version      1.3.3
-// @description  一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置
+// @version      1.4.0
+// @description  一键获取商品数据并发送至指定的 Webhook 地址，支持按钮自由拖拽位置，可补充款式编码与采购人信息
 // @author       Assistant
 // @match        *://detail.tmall.com/item.htm*
 // @match        *://item.taobao.com/item.htm*
@@ -23,8 +23,8 @@
 
     /**
      * 模块名称：淘宝/天猫商品抓取模块
-     * 模块描述：淘宝与天猫详情页面的商品信息自动化抓取与上传。
-     * 模块职责：通过解析页面 ICE 上下文获取商品元数据，并通过 UI 拖拽按钮实现用户交互及 Webhook 发送。
+     * 模块描述：淘宝与天猫详情页面的商品信息自动化抓取与上传，支持额外信息录入。
+     * 模块职责：通过解析页面 ICE 上下文获取商品元数据，支持弹出框录入款式编码与采购人，并通过 Webhook 发送。
      */
 
     //------------------
@@ -41,7 +41,9 @@
     const SETTINGS_CONFIG = [
         { id: 'tm_username', label: '用户名', type: 'text', placeholder: '请输入您的用户名' },
         { id: 'tm_webhook', label: 'Webhook 地址', type: 'url', placeholder: '请输入 Webhook 存储地址' },
-        { id: 'tm_token', label: 'AirScript Token', type: 'password', placeholder: '请输入鉴权 Token' }
+        { id: 'tm_token', label: 'AirScript Token', type: 'password', placeholder: '请输入鉴权 Token' },
+        { id: 'tm_enable_extra_info', label: '启用额外信息录入', type: 'checkbox', description: '提取后弹出款式编码与采购人填写框' },
+        { id: 'tm_purchaser_list', label: '采购人名单', type: 'textarea', placeholder: '请输入采购人名单，多个名单请用中文逗号、英文逗号或换行分隔' }
     ];
 
     /**
@@ -50,12 +52,13 @@
      * 概述: 创建并显示一个现代化的配置弹窗
      * 详细描述: 
      * 1. 生成半透明遮罩层和居中的配置容器；
-     * 2. 根据 SETTINGS_CONFIG 动态生成输入表单；
-     * 3. 实现保存逻辑，将数据持久化至 GM 存储并刷新页面；
-     * 4. 实现取消逻辑，销毁 DOM 元素。
+     * 2. 根据 SETTINGS_CONFIG 动态生成输入表单，支持 text, url, password, checkbox, textarea；
+     * 3. [优化] 联动逻辑：仅在开启额外信息录入时才可编辑采购人名单；
+     * 4. 实现保存逻辑，将数据持久化至 GM 存储并刷新页面；
+     * 5. 实现取消逻辑，销毁 DOM 元素。
      * 调用的函数: 无
      * 参数: 无
-     * 修改时间: 2026-03-06 13:57
+     * 修改时间: 2026-03-07 10:59
      */
     function showSettingsModal() {
         // 移除已存在的弹窗
@@ -76,13 +79,32 @@
         `;
 
         SETTINGS_CONFIG.forEach(item => {
-            const val = GM_getValue(item.id, "");
+            const val = GM_getValue(item.id, item.type === 'checkbox' ? false : "");
             html += `
                 <div class="tm-settings-item">
                     <label>${item.label}</label>
-                    <input type="${item.type}" id="input-${item.id}" value="${val}" placeholder="${item.placeholder}">
-                </div>
             `;
+            
+            if (item.type === 'checkbox') {
+                html += `
+                    <div class="tm-checkbox-wrapper">
+                        <input type="checkbox" id="input-${item.id}" ${val ? 'checked' : ''}>
+                        <span class="tm-item-desc">${item.description || ''}</span>
+                    </div>
+                `;
+            } else if (item.type === 'textarea') {
+                // 采购人名单初始禁用状态取决于额外信息开关
+                const isEnabled = GM_getValue("tm_enable_extra_info", false);
+                html += `
+                    <textarea id="input-${item.id}" placeholder="${item.placeholder}" rows="3" ${item.id === 'tm_purchaser_list' && !isEnabled ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${val}</textarea>
+                `;
+            } else {
+                html += `
+                    <input type="${item.type}" id="input-${item.id}" value="${val}" placeholder="${item.placeholder}">
+                `;
+            }
+            
+            html += `</div>`;
         });
 
         html += `
@@ -97,11 +119,26 @@
         overlay.appendChild(container);
         document.body.appendChild(overlay);
 
+        // [联动优化] 监听开关变化，动态禁用/启用采购人名单
+        const enableCheckbox = document.getElementById('input-tm_enable_extra_info');
+        const purchaserList = document.getElementById('input-tm_purchaser_list');
+        if (enableCheckbox && purchaserList) {
+            enableCheckbox.onchange = () => {
+                purchaserList.disabled = !enableCheckbox.checked;
+                purchaserList.style.opacity = enableCheckbox.checked ? "1" : "0.5";
+                purchaserList.style.cursor = enableCheckbox.checked ? "text" : "not-allowed";
+            };
+        }
+
         // 绑定事件
         document.getElementById('tm-settings-save').onclick = () => {
             SETTINGS_CONFIG.forEach(item => {
                 const input = document.getElementById(`input-${item.id}`);
-                GM_setValue(item.id, input.value.trim());
+                if (item.type === 'checkbox') {
+                    GM_setValue(item.id, input.checked);
+                } else {
+                    GM_setValue(item.id, input.value.trim());
+                }
             });
             alert("✅ 配置已更新！");
             location.reload();
@@ -149,7 +186,7 @@
         }
 
         /* 设置弹窗样式 */
-        #tm-settings-overlay {
+        #tm-settings-overlay, #tm-extra-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5);
@@ -159,7 +196,7 @@
             justify-content: center;
             font-family: "Microsoft YaHei", sans-serif;
         }
-        #tm-settings-container {
+        #tm-settings-container, #tm-extra-container {
             background: white;
             width: 400px;
             border-radius: 12px;
@@ -171,7 +208,7 @@
             from { opacity: 0; transform: translateY(-20px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .tm-settings-header {
+        .tm-settings-header, .tm-extra-header {
             background: #f8f8f8;
             padding: 15px 20px;
             font-size: 18px;
@@ -179,19 +216,20 @@
             border-bottom: 1px solid #eee;
             color: #333;
         }
-        .tm-settings-body {
+        .tm-settings-body, .tm-extra-body {
             padding: 20px;
         }
-        .tm-settings-item {
+        .tm-settings-item, .tm-extra-item {
             margin-bottom: 15px;
         }
-        .tm-settings-item label {
+        .tm-settings-item label, .tm-extra-item label {
             display: block;
             margin-bottom: 8px;
             font-weight: bold;
             color: #666;
+            font-size: 14px;
         }
-        .tm-settings-item input {
+        .tm-settings-item input, .tm-settings-item textarea, .tm-extra-item input, .tm-extra-item select {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
@@ -199,11 +237,25 @@
             box-sizing: border-box;
             outline: none;
             transition: border-color 0.2s;
+            font-family: inherit;
         }
-        .tm-settings-item input:focus {
+        .tm-settings-item input:focus, .tm-settings-item textarea:focus, .tm-extra-item input:focus, .tm-extra-item select:focus {
             border-color: #ff5000;
         }
-        .tm-settings-footer {
+        .tm-checkbox-wrapper {
+            display: flex;
+            align-items: center;
+        }
+        .tm-checkbox-wrapper input {
+            width: auto;
+            margin-right: 10px;
+        }
+        .tm-item-desc {
+            font-size: 12px;
+            color: #999;
+            font-weight: normal;
+        }
+        .tm-settings-footer, .tm-extra-footer {
             padding: 15px 20px;
             border-top: 1px solid #eee;
             text-align: right;
@@ -236,6 +288,101 @@
     //------------------
 
     /**
+     * 函数名称：显示额外信息录入弹窗
+     * 
+     * 概述: 弹出款式编码与采购人录入框
+     * 详细描述: 
+     * 1. 弹出遮罩层和居中的录入容器；
+     * 2. 提供款式编码输入框；
+     * 3. [优化] 提供采购人下拉列表，默认选中上次提交的采购人；
+     * 4. 确认后通过 Promise 返回填写的信息，并更新“上次采购人”记录，取消则拒绝。
+     * 调用的函数: 无
+     * 参数: 无
+     * 返回值: @returns {Promise<{styleCode: string, purchaser: string}>} 用户录入的信息
+     * 修改时间: 2026-03-07 11:00
+     */
+    function showExtraInfoModal() {
+        return new Promise((resolve, reject) => {
+            const existing = document.getElementById('tm-extra-overlay');
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'tm-extra-overlay';
+            
+            const container = document.createElement('div');
+            container.id = 'tm-extra-container';
+            
+            // 解析采购人列表
+            const rawList = GM_getValue("tm_purchaser_list", "");
+            const purchasers = rawList.split(/[,，\n]/).map(s => s.trim()).filter(s => s);
+            
+            // 获取上次选择的采购人作为默认值
+            const lastPurchaser = GM_getValue("tm_last_purchaser", "");
+
+            let optionsHtml = purchasers.map(p => {
+                const isSelected = p === lastPurchaser;
+                return `<option value="${p}" ${isSelected ? 'selected' : ''}>${p}</option>`;
+            }).join('');
+
+            if (purchasers.length === 0) {
+                optionsHtml = '<option value="">(未配置采购人)</option>';
+            } else {
+                // 如果没有上次记录，默认显示提示项
+                const hasSelected = purchasers.includes(lastPurchaser);
+                optionsHtml = `<option value="" ${!hasSelected ? 'selected' : ''}>请选择采购人</option>` + optionsHtml;
+            }
+
+            container.innerHTML = `
+                <div class="tm-extra-header">📝 补充商品信息</div>
+                <div class="tm-extra-body">
+                    <div class="tm-extra-item">
+                        <label>款式编码</label>
+                        <input type="text" id="tm-extra-style-code" placeholder="请输入款式编码">
+                    </div>
+                    <div class="tm-extra-item">
+                        <label>采购人</label>
+                        <select id="tm-extra-purchaser">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                </div>
+                <div class="tm-extra-footer">
+                    <button id="tm-extra-confirm" class="tm-btn-primary">确认并提取</button>
+                    <button id="tm-extra-cancel" class="tm-btn-secondary">取消</button>
+                </div>
+            `;
+
+            overlay.appendChild(container);
+            document.body.appendChild(overlay);
+
+            document.getElementById('tm-extra-confirm').onclick = () => {
+                const styleCode = document.getElementById('tm-extra-style-code').value.trim();
+                const purchaser = document.getElementById('tm-extra-purchaser').value;
+                
+                // 记忆本次选择的采购人
+                if (purchaser) {
+                    GM_setValue("tm_last_purchaser", purchaser);
+                }
+                
+                overlay.remove();
+                resolve({ styleCode, purchaser });
+            };
+
+            document.getElementById('tm-extra-cancel').onclick = () => {
+                overlay.remove();
+                reject("cancelled");
+            };
+
+            overlay.onclick = (e) => {
+                if (e.target === overlay) {
+                    overlay.remove();
+                    reject("cancelled");
+                }
+            };
+        });
+    }
+
+    /**
      * 函数名称：使元素可拖拽
      * 
      * 概述: 为指定元素添加鼠标事件监听，实现自由移动并持久化坐标
@@ -246,7 +393,7 @@
      * 4. mouseup 阶段移除监听并保存最新位置到 GM 存储。
      * 调用的函数: 无
      * 参数: @param {HTMLElement} el - 需要实现拖拽的 DOM 元素
-     * 修改时间: 2026-03-06 13:57
+     * 修改时间: 2026-03-07 10:48
      */
     function makeDraggable(el) {
         // 读取存储的位置信息，默认 右 20px, 上 150px
@@ -433,17 +580,20 @@
     /**
      * 函数名称：触发商品抓取流程
      * 
-     * 概述: 点击按钮后的主控函数，执行验证、提取、复制、上传全流程
+     * 概述: 点击按钮后的主控函数，执行验证、提取、(可选)录入额外信息、复制、上传全流程
      * 详细描述: 
      * 1. 判断是否刚结束拖拽以防止误触；
      * 2. 校验用户名、Webhook 地址及 AirScript Token 是否存在；
-     * 3. 调用 extractProductData 提取数据并写入剪贴板；
-     * 4. 调用新版 sendToWebhook 封装数据并带 Token 异步上传；
-     * 5. 解析服务器响应，根据 success、skip、error 等状态字段弹出分级中文提示。
+     * 3. 调用 extractProductData 提取基础数据；
+     * 4. 如果配置开启，调用 showExtraInfoModal 弹出录入框，获取款式编码与采购人；
+     * 5. 将基础数据与额外信息合并，并写入剪贴板；
+     * 6. 调用新版 sendToWebhook 封装数据并带 Token 异步上传；
+     * 7. 解析服务器响应，弹出分级中文提示。
      * 调用的函数: 
      * - scripts/tm_grabber.user.js 的 extractProductData (提取详情数据)
+     * - scripts/tm_grabber.user.js 的 showExtraInfoModal (显示录入弹窗)
      * - scripts/tm_grabber.user.js 的 sendToWebhook (新版数据上传接口)
-     * 修改时间: 2026-03-06 16:11
+     * 修改时间: 2026-03-07 10:48
      */
     async function handleGrab() {
         if (isDragging) return; // 如果刚才是在拖动按钮，则不触发抓取
@@ -452,6 +602,7 @@
         const username = GM_getValue("tm_username", "");
         const webhook = GM_getValue("tm_webhook", "");
         const token = GM_getValue("tm_token", "");
+        const enableExtraInfo = GM_getValue("tm_enable_extra_info", false);
         
         if (!username || !webhook || !token) {
             alert("⚠️ 请先在油猴菜单中完整设置用户名、Webhook 地址和 Token！");
@@ -459,37 +610,54 @@
         }
 
         const btn = document.getElementById('tm-data-grabber');
-        btn.classList.add('loading');
-        btn.innerHTML = '⏳ 发送中...';
+        const originalHtml = btn.innerHTML;
 
         try {
-            const data = extractProductData(username);
-            if (data) {
-                // 成功提取数据，先复制到剪贴板
-                GM_setClipboard(JSON.stringify(data, null, 4));
-                
-                // 发送数据到新的 Webhook 接口
-                const response = await sendToWebhook(webhook, data, token);
-                
-                // 根据新的响应格式进行逻辑判断
-                const result = response.data?.result || {};
-                
-                if (result.success === true) {
-                    if (result.skip === true) {
-                        alert("⚠️ 商品已存在，跳过保存。数据已复制到剪贴板。");
-                    } else {
-                        alert("✅ 提取成功！数据已新增并复制到剪贴板。");
-                    }
-                } else if (result.success === false) {
-                    // 处理后端明确返回的失败（例如字段缺失等错误）
-                    const errorMsg = result.error || response.error || "未知服务器逻辑错误";
-                    alert(`❌ 插入失败: ${errorMsg}`);
-                } else {
-                    // 处理非预期响应格式，但状态码正常的情况
-                    alert("✅ 数据已发送，但未收到明确的处理结果状态。");
-                }
-            } else {
+            let data = extractProductData(username);
+            if (!data) {
                 alert("❌ 提取失败：未找到商品渲染上下文 (ICE_APP_CONTEXT)。");
+                return;
+            }
+
+            // 如果开启了额外信息录入
+            if (enableExtraInfo) {
+                try {
+                    const extra = await showExtraInfoModal();
+                    data = { ...data, ...extra };
+                } catch (err) {
+                    if (err === "cancelled") {
+                        console.log("用户取消了额外信息输入");
+                        return; // 中止流程
+                    }
+                    throw err;
+                }
+            }
+
+            btn.classList.add('loading');
+            btn.innerHTML = '⏳ 发送中...';
+
+            // 成功提取数据，先复制到剪贴板
+            GM_setClipboard(JSON.stringify(data, null, 4));
+            
+            // 发送数据到新的 Webhook 接口
+            const response = await sendToWebhook(webhook, data, token);
+            
+            // 根据新的响应格式进行逻辑判断
+            const result = response.data?.result || {};
+            
+            if (result.success === true) {
+                if (result.skip === true) {
+                    alert("⚠️ 商品已存在，跳过保存。数据已复制到剪贴板。");
+                } else {
+                    alert("✅ 提取成功！数据已新增并复制到剪贴板。");
+                }
+            } else if (result.success === false) {
+                // 处理后端明确返回的失败（例如字段缺失等错误）
+                const errorMsg = result.error || response.error || "未知服务器逻辑错误";
+                alert(`❌ 插入失败: ${errorMsg}`);
+            } else {
+                // 处理非预期响应格式，但状态码正常的情况
+                alert("✅ 数据已发送，但未收到明确的处理结果状态。");
             }
         } catch (e) {
             // 处理网络请求报错、解析异常等
@@ -497,7 +665,7 @@
         } finally {
             // 恢复按钮状态
             btn.classList.remove('loading');
-            btn.innerHTML = '🔍 提取商品JSON';
+            btn.innerHTML = originalHtml;
         }
     }
 
